@@ -2275,6 +2275,24 @@ DB.init();
                 });
             }
 
+            // 让"月经提醒"小组件的左右边距，跟上面 app 图标 + 纪念日小组件那一行对齐（沉浸模式下差距明显，需要动态量）
+            function hsAlignPeriodWidgetWidth() {
+                const appGrid = document.querySelector('.app-grid');
+                const teaWidget = document.getElementById('tea-widget');
+                const periodWidget = document.getElementById('period-reminder-widget');
+                const contentWrapper = document.querySelector('.content-wrapper.home-page-1');
+                if (!appGrid || !teaWidget || !periodWidget || !contentWrapper) return;
+                const gridRect = appGrid.getBoundingClientRect();
+                const teaRect = teaWidget.getBoundingClientRect();
+                const wrapRect = contentWrapper.getBoundingClientRect();
+                const leftMargin = gridRect.left - wrapRect.left;
+                const rightMargin = wrapRect.right - teaRect.right;
+                if (leftMargin > 0 && rightMargin > 0) {
+                    periodWidget.style.marginLeft = leftMargin + 'px';
+                    periodWidget.style.marginRight = rightMargin + 'px';
+                }
+            }
+
             // 启动时恢复沉浸模式
             if (localStorage.getItem('immersive_mode') === '1') {
                 const mc = document.querySelector('.mobile-container');
@@ -2295,6 +2313,10 @@ DB.init();
                     pw0.style.transform = 'scale(0.95)';
                     pw0.style.transformOrigin = 'center top';
                 }
+                setTimeout(hsAlignPeriodWidgetWidth, 0);
+                window.addEventListener('resize', () => {
+                    if (localStorage.getItem('immersive_mode') === '1') hsAlignPeriodWidgetWidth();
+                });
 
                 if (di) di.style.display = 'none';
             }
@@ -11587,6 +11609,7 @@ DB.init();
                                     periodWidget.style.transform = 'scale(0.95)';
                                     periodWidget.style.transformOrigin = 'center top';
                                 }
+                                setTimeout(hsAlignPeriodWidgetWidth, 0);
                             } else {
                                 mobileContainer.style.cssText = '';
                                 document.documentElement.style.cssText = '';
@@ -11603,6 +11626,8 @@ DB.init();
                                 if (periodWidget) {
                                     periodWidget.style.transform = '';
                                     periodWidget.style.transformOrigin = '';
+                                    periodWidget.style.marginLeft = '';
+                                    periodWidget.style.marginRight = '';
                                 }
                             }
                             localStorage.setItem('immersive_mode', on ? '1' : '0');
