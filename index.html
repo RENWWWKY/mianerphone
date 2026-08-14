@@ -11862,11 +11862,20 @@ const ApiHandler = {
             const cleanedEndpoint = (endpoint || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
             url = `${cleanedEndpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`;
             // Gemini expects the 'contents' field to be the array of messages.
+            // 【修复·截断问题】2.5 系列模型的"思考"(thinking) token 也算在 maxOutputTokens 额度里，
+            // 之前 2048 太小，经常被思考吃光，导致正文被截断甚至空回复。
+            // 这里把额度调大，并且给思考单独限一个 budget，保证正文始终有余量可写。
             body = JSON.stringify({
                 contents: messages,
-                generationConfig: { maxOutputTokens: 2048, temperature: 1 }
+                generationConfig: {
+                    maxOutputTokens: 8192,
+                    temperature: 1,
+                    thinkingConfig: { thinkingBudget: 512 }
+                }
             });
-            return { url, options: { method: 'POST', headers, body } };
+            // 【修复·无响应/长等待】原来没有超时控制，反代卡住时 fetch 会无限挂起。
+            // 这里加 60 秒超时，超时会抛出 AbortError，外层 catch 能拿到明确的错误提示而不是干等。
+            return { url, options: { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) } };
         }
         
         // Handles 'openai', 'MyAPI', 'deepseek' (all OpenAI-like)
@@ -11907,7 +11916,8 @@ const ApiHandler = {
             max_tokens: 2048,
             temperature: 1
         });
-        return { url, options: { method: 'POST', headers, body } };
+        // 同样加 60 秒超时，避免中转/反代卡住时无限期等待
+        return { url, options: { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) } };
     },
 
     /**
