@@ -591,6 +591,51 @@ window.addEventListener('unhandledrejection', function(e) {
 
 <script>
 // ============================================
+// 【显示缩放补偿】iOS「设置→显示与亮度→显示缩放」标准/放大 两档，
+// 会让系统把手机模拟成不同的逻辑分辨率，从而让同一份 px 设计在两档下看起来大小不一样。
+// 这里只针对「添加到主屏幕」后的全屏 standalone 模式：
+// 检测到当前是「标准」分辨率时，按该机型标准↔放大的已知宽度比例，把整个桌面同比放大，
+// 让默认模式下看起来跟开了「放大」时一样大；已经是「放大」模式或型号不在表里则不处理。
+// 目前只收录了 iPhone 14 系列（14 / 14 Plus / 14 Pro / 14 Pro Max）的标准/放大逻辑分辨率，
+// 换了别的机型这段不会生效（也不会出错），需要再补充对应型号的数值。
+// ============================================
+(function() {
+    // [标准宽, 标准高, 放大宽, 放大高]
+    var ZOOM_TABLE = [
+        [390, 844, 320, 693], // iPhone 14
+        [428, 926, 375, 812], // iPhone 14 Plus
+        [393, 852, 375, 812], // iPhone 14 Pro（放大后数值参考同代 Pro Max，未逐一实测）
+        [430, 932, 375, 812]  // iPhone 14 Pro Max
+    ];
+    function applyZoomCompensation() {
+        try {
+            if (!window.matchMedia || !window.matchMedia('(display-mode: standalone)').matches) return;
+            var container = document.querySelector('.mobile-container');
+            if (!container) return;
+            var w = window.innerWidth, h = window.innerHeight;
+            var match = null;
+            for (var i = 0; i < ZOOM_TABLE.length; i++) {
+                var row = ZOOM_TABLE[i];
+                if (w === row[0] && h === row[1]) { match = row; break; }
+            }
+            if (match) {
+                var scale = match[0] / match[2];
+                container.style.setProperty('transform', 'scale(' + scale.toFixed(4) + ')', 'important');
+                container.style.setProperty('transform-origin', 'top center', 'important');
+            } else {
+                container.style.removeProperty('transform');
+            }
+        } catch (e) { console.warn('[显示缩放补偿] 出错', e); }
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') applyZoomCompensation();
+    else document.addEventListener('DOMContentLoaded', applyZoomCompensation);
+    window.addEventListener('resize', applyZoomCompensation);
+    window.addEventListener('orientationchange', function() { setTimeout(applyZoomCompensation, 300); });
+})();
+</script>
+
+<script>
+// ============================================
 // 4o 默认系统提示词（来自泄露版 chatgpt4o_20250324 + 语言匹配补充）
 // 这是新建联系人时自动套用的默认人设，让对话拥有 4o 的味道
 // ============================================
