@@ -2321,6 +2321,7 @@ DB.init();
                 mc.style.setProperty('left', '0', 'important');
             }
             function hsApplyImmersiveLayout() {
+                hsShowDebugOverlay();
                 if (!hsIsImmersiveContext()) return;
                 const mc = document.querySelector('.mobile-container');
                 const di = document.querySelector('.dynamic-island');
@@ -2347,27 +2348,34 @@ DB.init();
             }
             // 临时诊断用的小标签：把 window.innerWidth / innerHeight / devicePixelRatio / standalone 判定
             // 直接显示在屏幕上，方便截图对比"标准"和"放大"两种显示缩放下这几个数到底有没有变化，
-            // 好确认问题到底是不是显示缩放引起的。确认没问题之后可以让我删掉这段。
+            // 好确认问题是不是显示缩放引起的、以及沉浸模式有没有被正确识别到。确认没问题之后可以让我删掉这段。
             function hsShowDebugOverlay() {
                 let tag = document.getElementById('hs-debug-tag');
                 if (!tag) {
                     tag = document.createElement('div');
                     tag.id = 'hs-debug-tag';
-                    tag.style.cssText = 'position:fixed;top:6px;right:6px;z-index:999999;background:rgba(0,0,0,0.65);color:#fff;font-size:9px;line-height:1.4;padding:4px 6px;border-radius:6px;pointer-events:none;font-family:monospace;white-space:pre;';
-                    document.body.appendChild(tag);
+                    tag.style.cssText = 'position:fixed;top:6px;right:6px;z-index:2147483647;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;line-height:1.5;padding:5px 7px;border-radius:6px;pointer-events:none;font-family:monospace;white-space:pre;';
+                    document.documentElement.appendChild(tag);
                 }
                 const mc = document.querySelector('.mobile-container');
                 const mcRect = mc ? mc.getBoundingClientRect() : null;
-                tag.textContent = 'vw:' + window.innerWidth + ' vh:' + window.innerHeight +
+                let immersive = false, standalone = false;
+                try { standalone = hsIsStandalone(); } catch(e) {}
+                try { immersive = hsIsImmersiveContext(); } catch(e) {}
+                tag.textContent = 'DEBUG\nvw:' + window.innerWidth + ' vh:' + window.innerHeight +
                     ' dpr:' + window.devicePixelRatio +
-                    '\nstandalone:' + hsIsStandalone() +
-                    (mcRect ? ('\nmc:' + Math.round(mcRect.width) + 'x' + Math.round(mcRect.height)) : '');
+                    '\nstandalone:' + standalone + ' immersive:' + immersive +
+                    (mcRect ? ('\nmc:' + Math.round(mcRect.width) + 'x' + Math.round(mcRect.height)) : '\nmc: not found');
             }
             window.addEventListener('resize', () => {
-                if (hsIsImmersiveContext()) { hsApplyDeviceZoomFix(); hsAlignPeriodWidgetWidth(); hsShowDebugOverlay(); }
+                hsShowDebugOverlay();
+                if (hsIsImmersiveContext()) { hsApplyDeviceZoomFix(); hsAlignPeriodWidgetWidth(); }
             });
             // 页面刚加载、或者系统"显示缩放"设置发生变化触发 resize 时，都会重新计算
             hsApplyImmersiveLayout();
+            document.addEventListener('DOMContentLoaded', hsShowDebugOverlay);
+            window.addEventListener('load', hsShowDebugOverlay);
+            window.addEventListener('pageshow', hsShowDebugOverlay);
 
             // --- 模板内容 ---
             const appContents = {
