@@ -2363,6 +2363,10 @@ DB.init();
                     sc.style.boxSizing = 'border-box';
                     sc.style.height = '100%';
                 }
+                if (hc) {
+                    hc.style.paddingLeft = '16px';
+                    hc.style.paddingRight = '16px';
+                }
                 const pw0 = document.getElementById('period-reminder-widget');
                 if (pw0) {
                     pw0.style.transform = 'scale(0.95)';
@@ -11655,6 +11659,10 @@ DB.init();
                                 screenEl.style.height = '100%';
                                 // app 和小组件往下移
                                 homeContent.style.marginTop = '';
+                                // 沉浸模式屏幕更宽，左右还用平时的 40px 内边距会显得图标离边框太远，
+                                // 收窄到 16px，让图标/小组件更贴近手机左右边框
+                                homeContent.style.paddingLeft = '16px';
+                                homeContent.style.paddingRight = '16px';
                                 if (dynamicIsland) dynamicIsland.style.display = 'none';
                                 immersiveTrack.style.background = '#FFD3D4';
                                 immersiveThumb.style.transform = 'translateX(24px)';
@@ -11675,6 +11683,8 @@ DB.init();
                                 screenEl.style.boxSizing = '';
                                 screenEl.style.height = '';
                                 homeContent.style.marginTop = '';
+                                homeContent.style.paddingLeft = '';
+                                homeContent.style.paddingRight = '';
                                 if (dynamicIsland) dynamicIsland.style.display = '';
                                 immersiveTrack.style.background = '#ddd';
                                 immersiveThumb.style.transform = 'translateX(0)';
