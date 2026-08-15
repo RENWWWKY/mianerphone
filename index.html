@@ -18,6 +18,10 @@
     <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
     <style>
         /* --- 核心基础 --- */
+        /* 【修复·字体跟随系统缩放】锁死 WebKit 的自动字号调整，让页面里所有文字大小
+           只由 CSS 里写的 px 值决定，不再受 iOS「文字大小/更大字体」系统设置影响，
+           这样默认模式和更大字体模式下看到的桌面大小就会保持一致。 */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
         html { background: linear-gradient(180deg, #f0f5fa 0%, #e2ebf5 100%); height: 100%; min-height: -webkit-fill-available; }
         html { background: #e2ebf5; } /* 底部safe area填充色 */
         body { display: flex; justify-content: center; align-items: center; height: 100vh; height: 100dvh; min-height: -webkit-fill-available; background: linear-gradient(180deg, #f0f5fa 0%, #e2ebf5 100%); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; user-select: none; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; background-color: #e2ebf5;}
@@ -46,7 +50,7 @@
             width: 100%;
             height: 100%;
             box-sizing: border-box;
-            padding: 40px 14px 0;
+            padding: 70px 14px 0;
             transform: translateX(100%);
             transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
             z-index: 1;
@@ -583,6 +587,51 @@ window.addEventListener('unhandledrejection', function(e) {
     console.warn('[眠尔机·未捕获Promise]', (e.reason && (e.reason.message || e.reason)) || e);
     // 同上
 });
+</script>
+
+<script>
+// ============================================
+// 【显示缩放补偿】iOS「设置→显示与亮度→显示缩放」标准/放大 两档，
+// 会让系统把手机模拟成不同的逻辑分辨率，从而让同一份 px 设计在两档下看起来大小不一样。
+// 这里只针对「添加到主屏幕」后的全屏 standalone 模式：
+// 检测到当前是「标准」分辨率时，按该机型标准↔放大的已知宽度比例，把整个桌面同比放大，
+// 让默认模式下看起来跟开了「放大」时一样大；已经是「放大」模式或型号不在表里则不处理。
+// 目前只收录了 iPhone 14 系列（14 / 14 Plus / 14 Pro / 14 Pro Max）的标准/放大逻辑分辨率，
+// 换了别的机型这段不会生效（也不会出错），需要再补充对应型号的数值。
+// ============================================
+(function() {
+    // [标准宽, 标准高, 放大宽, 放大高]
+    var ZOOM_TABLE = [
+        [390, 844, 320, 693], // iPhone 14
+        [428, 926, 375, 812], // iPhone 14 Plus
+        [393, 852, 375, 812], // iPhone 14 Pro（放大后数值参考同代 Pro Max，未逐一实测）
+        [430, 932, 375, 812]  // iPhone 14 Pro Max
+    ];
+    function applyZoomCompensation() {
+        try {
+            if (!window.matchMedia || !window.matchMedia('(display-mode: standalone)').matches) return;
+            var container = document.querySelector('.mobile-container');
+            if (!container) return;
+            var w = window.innerWidth, h = window.innerHeight;
+            var match = null;
+            for (var i = 0; i < ZOOM_TABLE.length; i++) {
+                var row = ZOOM_TABLE[i];
+                if (w === row[0] && h === row[1]) { match = row; break; }
+            }
+            if (match) {
+                var scale = match[0] / match[2];
+                container.style.setProperty('transform', 'scale(' + scale.toFixed(4) + ')', 'important');
+                container.style.setProperty('transform-origin', 'top center', 'important');
+            } else {
+                container.style.removeProperty('transform');
+            }
+        } catch (e) { console.warn('[显示缩放补偿] 出错', e); }
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') applyZoomCompensation();
+    else document.addEventListener('DOMContentLoaded', applyZoomCompensation);
+    window.addEventListener('resize', applyZoomCompensation);
+    window.addEventListener('orientationchange', function() { setTimeout(applyZoomCompensation, 300); });
+})();
 </script>
 
 <script>
@@ -2293,41 +2342,13 @@ DB.init();
                 }
             }
 
-            // 判断当前是不是"添加到主屏幕"后独立打开的（不是在 Safari 标签页里）
-            function hsIsStandalone() {
-                return (window.navigator.standalone === true) ||
-                    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-            }
-            // 手动开关的"沉浸模式" 或者 系统级"添加到主屏幕"独立打开，都算沉浸场景
-            function hsIsImmersiveContext() {
-                return hsIsStandalone() || localStorage.getItem('immersive_mode') === '1';
-            }
-            // 核心修复：不用 100vw/100vh（会跟着"显示缩放"系统设置一起变），
-            // 而是把 mobile-container 按固定参照宽度 375 排版，再用 window.innerWidth 算出的真实缩放比例贴到屏幕上。
-            // window.innerWidth 本身就会随"标准/放大"显示缩放变化，用它来算缩放比例，才能真正抵消这个系统设置的影响。
-            function hsApplyDeviceZoomFix() {
-                const mc = document.querySelector('.mobile-container');
-                if (!mc) return;
-                const REF_WIDTH = 375;
-                const vw = window.innerWidth, vh = window.innerHeight;
-                if (!vw || !vh) return;
-                const scale = vw / REF_WIDTH;
-                mc.style.setProperty('width', REF_WIDTH + 'px', 'important');
-                mc.style.setProperty('height', (vh / scale) + 'px', 'important');
-                mc.style.setProperty('transform', 'scale(' + scale.toFixed(5) + ')', 'important');
-                mc.style.setProperty('transform-origin', 'top left', 'important');
-                mc.style.setProperty('position', 'absolute', 'important');
-                mc.style.setProperty('top', '0', 'important');
-                mc.style.setProperty('left', '0', 'important');
-            }
-            function hsApplyImmersiveLayout() {
-                hsShowDebugOverlay();
-                if (!hsIsImmersiveContext()) return;
+            // 启动时恢复沉浸模式
+            if (localStorage.getItem('immersive_mode') === '1') {
                 const mc = document.querySelector('.mobile-container');
                 const di = document.querySelector('.dynamic-island');
                 const sc = document.querySelector('.screen');
-                if (!mc) return;
-                mc.style.cssText = 'max-width:none !important;border-radius:0 !important;border:none !important;box-shadow:none !important;z-index:9999 !important;';
+                const hc = document.querySelector('.home-content');
+                mc.style.cssText = 'position:absolute !important;top:0 !important;left:0 !important;width:100vw !important;height:100vh !important;max-width:none !important;border-radius:0 !important;border:none !important;box-shadow:none !important;transform:none !important;z-index:9999 !important;';
                 document.documentElement.style.cssText = 'background:linear-gradient(180deg,#f0f5fa 0%,#e2ebf5 100%) !important;';
                 document.body.style.cssText = 'padding:0 !important;margin:0 !important;background:transparent !important;';
                 if (sc) {
@@ -2336,46 +2357,18 @@ DB.init();
                     sc.style.boxSizing = 'border-box';
                     sc.style.height = '100%';
                 }
-                hsApplyDeviceZoomFix();
                 const pw0 = document.getElementById('period-reminder-widget');
                 if (pw0) {
                     pw0.style.transform = 'scale(0.95)';
                     pw0.style.transformOrigin = 'center top';
                 }
-                if (di) di.style.display = 'none';
                 setTimeout(hsAlignPeriodWidgetWidth, 0);
-                hsShowDebugOverlay();
+                window.addEventListener('resize', () => {
+                    if (localStorage.getItem('immersive_mode') === '1') hsAlignPeriodWidgetWidth();
+                });
+
+                if (di) di.style.display = 'none';
             }
-            // 临时诊断用的小标签：把 window.innerWidth / innerHeight / devicePixelRatio / standalone 判定
-            // 直接显示在屏幕上，方便截图对比"标准"和"放大"两种显示缩放下这几个数到底有没有变化，
-            // 好确认问题是不是显示缩放引起的、以及沉浸模式有没有被正确识别到。确认没问题之后可以让我删掉这段。
-            function hsShowDebugOverlay() {
-                let tag = document.getElementById('hs-debug-tag');
-                if (!tag) {
-                    tag = document.createElement('div');
-                    tag.id = 'hs-debug-tag';
-                    tag.style.cssText = 'position:fixed;top:6px;right:6px;z-index:2147483647;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;line-height:1.5;padding:5px 7px;border-radius:6px;pointer-events:none;font-family:monospace;white-space:pre;';
-                    document.documentElement.appendChild(tag);
-                }
-                const mc = document.querySelector('.mobile-container');
-                const mcRect = mc ? mc.getBoundingClientRect() : null;
-                let immersive = false, standalone = false;
-                try { standalone = hsIsStandalone(); } catch(e) {}
-                try { immersive = hsIsImmersiveContext(); } catch(e) {}
-                tag.textContent = 'DEBUG\nvw:' + window.innerWidth + ' vh:' + window.innerHeight +
-                    ' dpr:' + window.devicePixelRatio +
-                    '\nstandalone:' + standalone + ' immersive:' + immersive +
-                    (mcRect ? ('\nmc:' + Math.round(mcRect.width) + 'x' + Math.round(mcRect.height)) : '\nmc: not found');
-            }
-            window.addEventListener('resize', () => {
-                hsShowDebugOverlay();
-                if (hsIsImmersiveContext()) { hsApplyDeviceZoomFix(); hsAlignPeriodWidgetWidth(); }
-            });
-            // 页面刚加载、或者系统"显示缩放"设置发生变化触发 resize 时，都会重新计算
-            hsApplyImmersiveLayout();
-            document.addEventListener('DOMContentLoaded', hsShowDebugOverlay);
-            window.addEventListener('load', hsShowDebugOverlay);
-            window.addEventListener('pageshow', hsShowDebugOverlay);
 
             // --- 模板内容 ---
             const appContents = {
@@ -11644,10 +11637,8 @@ DB.init();
                                 const wallpaperCss = wallpaperBg
                                     ? `background-image:${wallpaperBg} !important;background-size:cover !important;background-position:center !important;`
                                     : 'background:linear-gradient(180deg,#f0f5fa 0%,#e2ebf5 100%) !important;';
-                                // mobile-container 用固定参照宽度 + JS 算出的缩放比例贴满屏幕，
-                                // 不用 100vw/100vh（那个会跟着系统"显示缩放"设置一起变，导致跟"沉浸模式"关的时候视觉大小不一致）
-                                mobileContainer.style.cssText = 'max-width:none !important;border-radius:0 !important;border:none !important;box-shadow:none !important;z-index:9999 !important;';
-                                hsApplyDeviceZoomFix();
+                                // mobile-container 用 100vw 100vh 全屏（手机上原本就是 100vw）
+                                mobileContainer.style.cssText = 'position:absolute !important;top:0 !important;left:0 !important;width:100vw !important;height:100vh !important;max-width:none !important;border-radius:0 !important;border:none !important;box-shadow:none !important;transform:none !important;z-index:9999 !important;';
                                 // 圆角区域也铺壁纸，不透出白色
                                 document.documentElement.style.cssText = `${wallpaperCss}`;
                                 document.body.style.cssText = `padding:0 !important;margin:0 !important;${wallpaperCss}`;
@@ -11920,11 +11911,20 @@ const ApiHandler = {
             const cleanedEndpoint = (endpoint || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
             url = `${cleanedEndpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`;
             // Gemini expects the 'contents' field to be the array of messages.
+            // 【修复·截断问题】2.5 系列模型的"思考"(thinking) token 也算在 maxOutputTokens 额度里，
+            // 之前 2048 太小，经常被思考吃光，导致正文被截断甚至空回复。
+            // 这里把额度调大，并且给思考单独限一个 budget，保证正文始终有余量可写。
             body = JSON.stringify({
                 contents: messages,
-                generationConfig: { maxOutputTokens: 2048, temperature: 1 }
+                generationConfig: {
+                    maxOutputTokens: 8192,
+                    temperature: 1,
+                    thinkingConfig: { thinkingBudget: 512 }
+                }
             });
-            return { url, options: { method: 'POST', headers, body } };
+            // 【修复·无响应/长等待】原来没有超时控制，反代卡住时 fetch 会无限挂起。
+            // 这里加 60 秒超时，超时会抛出 AbortError，外层 catch 能拿到明确的错误提示而不是干等。
+            return { url, options: { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) } };
         }
         
         // Handles 'openai', 'MyAPI', 'deepseek' (all OpenAI-like)
@@ -11965,7 +11965,8 @@ const ApiHandler = {
             max_tokens: 2048,
             temperature: 1
         });
-        return { url, options: { method: 'POST', headers, body } };
+        // 同样加 60 秒超时，避免中转/反代卡住时无限期等待
+        return { url, options: { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) } };
     },
 
     /**
