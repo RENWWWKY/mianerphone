@@ -4585,10 +4585,20 @@ DB.init();
                                 const originalBtnText = btn.textContent;
                                 btn.textContent = '...';
                                 try {
-                                    // 如果最后一条是用户的转账或礼物，50%接收50%退还
-                                    const lastUserMsg = history[history.length - 1];
-                                    if(lastUserMsg && lastUserMsg.sender === 'me' && (lastUserMsg.type === 'transfer' || lastUserMsg.type === 'gift')) {
-                                        const targetIdx = history.length - 1;
+                                    // 如果最近一条"还没处理"的用户转账/礼物存在，50%接收50%退还
+                                    // 【修复】之前只看 history 严格意义上的最后一条，如果礼物之后又夹了别的消息
+                                    // （比如用户又追发了一句话），礼物就不再是"最后一条"，判定会被跳过、永远不接收。
+                                    // 现在改成从后往前找最近一条 sender==='me' 且未 claimed、未退还的转账/礼物。
+                                    let targetIdx = -1;
+                                    for (let k = history.length - 1; k >= 0; k--) {
+                                        const hm = history[k];
+                                        if (hm && hm.sender === 'me' && (hm.type === 'transfer' || hm.type === 'gift') && !hm.claimed && hm.status !== 'returned') {
+                                            targetIdx = k;
+                                            break;
+                                        }
+                                    }
+                                    const lastUserMsg = targetIdx >= 0 ? history[targetIdx] : null;
+                                    if(lastUserMsg) {
                                         await new Promise(r => setTimeout(r, 800 + Math.random() * 1000));
                                         const accepted = Math.random() < 0.5;
                                         if(accepted) {
