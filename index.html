@@ -12593,9 +12593,13 @@ const ApiHandler = {
                 throw new Error(`Failed to fetch models: ${err.error?.message || response.statusText}`);
             }
             const data = await response.json();
+            // 之前先 map 成了纯名字字符串，再拿 "generateContent" 去搜这个名字——
+            // 但模型名字（比如 "gemini-2.5-pro"）本来就不可能包含这个词，导致永远筛不出结果，
+            // 一直报"未找到模型数据"。真正标记"是否支持 generateContent"的字段是模型对象自己的
+            // supportedGenerationMethods 数组，得在还没把对象简化成名字字符串之前去检查它。
             return data.models
+                .filter(model => Array.isArray(model.supportedGenerationMethods) && model.supportedGenerationMethods.includes('generateContent'))
                 .map(model => model.name.replace('models/', ''))
-                .filter(name => name.includes('generateContent'))
                 .sort();
         }
         return [];
@@ -12612,18 +12616,36 @@ const ApiHandler = {
         if (platform === 'gemini') {
             const cleanedEndpoint = (endpoint || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
             url = `${cleanedEndpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`;
-            // Gemini expects the 'contents' field to be the array of messages.
+
+            // 【修复·官方接口连不上】项目里不少地方拼的是 OpenAI 风格的 {role:'system'|'user'|'assistant', content:'...'}，
+            // 直接原样塞进 contents 官方接口基本会报错（反代很可能自己做了兼容转换，官方没有）。
+            // 这里统一转换成 Gemini 要的格式：system 单独拆进 systemInstruction，assistant 改叫 model，
+            // content 字符串包进 parts:[{text}]；同时兼容已经是 {role,parts} 格式的消息（原样透传）。
+            let systemText = '';
+            const contents = [];
+            (messages || []).forEach(m => {
+                if (m.role === 'system') {
+                    systemText += (systemText ? '\n' : '') + (m.content || '');
+                    return;
+                }
+                const role = m.role === 'assistant' ? 'model' : (m.role || 'user');
+                const parts = m.parts ? m.parts : [{ text: m.content || '' }];
+                contents.push({ role, parts });
+            });
+
             // 【修复·截断问题】2.5 系列模型的"思考"(thinking) token 也算在 maxOutputTokens 额度里，
             // 之前 2048 太小，经常被思考吃光，导致正文被截断甚至空回复。
             // 这里把额度调大，并且给思考单独限一个 budget，保证正文始终有余量可写。
-            body = JSON.stringify({
-                contents: messages,
+            const bodyObj = {
+                contents,
                 generationConfig: {
                     maxOutputTokens: 8192,
                     temperature: 1,
                     thinkingConfig: { thinkingBudget: 512 }
                 }
-            });
+            };
+            if (systemText) bodyObj.systemInstruction = { parts: [{ text: systemText }] };
+            body = JSON.stringify(bodyObj);
             // 【修复·无响应/长等待】原来没有超时控制，反代卡住时 fetch 会无限挂起。
             // 这里加 60 秒超时，超时会抛出 AbortError，外层 catch 能拿到明确的错误提示而不是干等。
             return { url, options: { method: 'POST', headers, body, signal: AbortSignal.timeout(60000) } };
