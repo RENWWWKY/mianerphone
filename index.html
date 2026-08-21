@@ -175,7 +175,7 @@
         .message-avatar { width: 40px; height: 40px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #fff; flex-shrink: 0; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.1); cursor: pointer; }
         
         /* 气泡新样式 */
-        .message-bubble { border-radius: 18px 18px 18px 18px; padding: 7px 11px; font-size: 14px; line-height: 1.4; color: #775C56; position: relative; max-width: 100%; transition: opacity 0.3s; word-wrap: break-word; display: inline-block; width: auto; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.08)); }
+        .message-bubble { border-radius: 18px 18px 18px 18px; padding: 7px 11px; font-size: 14px; line-height: 1.4; color: #775C56; position: relative; max-width: 100%; transition: opacity 0.3s; word-wrap: break-word; display: inline-block; width: auto; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.08)); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         .message-bubble.sent { background-color: #FFD3D4; }
 
         .ctx-menu { position:fixed; background:#775C56; border-radius:12px; padding:5px; z-index:9998; box-shadow:0 4px 16px rgba(119,92,86,0.35); display:grid; grid-template-columns:repeat(4,1fr); gap:2px; width:236px; }
@@ -4037,7 +4037,23 @@ DB.init();
                                     DB.saveChats({...DB.getChats(),[id]:history});
                                     render();
                                 }}] : []),
-                                {label:'删除', danger:true, action:()=>{ deleteMsg(msgIdx); }},
+                                {label:'删除', danger:true, action:()=>{
+                                    // 【删除二次确认】避免长按误触直接删掉消息，样式跟编辑弹窗一致：
+                                    // 米白卡片从底部弹出，薄荷绿=取消（安全），粉色=删除（危险操作用醒目色）
+                                    const delDlg = document.createElement('div');
+                                    delDlg.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.3);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+                                    delDlg.innerHTML = `<div style="background:#F5F0E8;border-radius:18px 18px 0 0;width:100%;padding:16px;padding-bottom:24px;box-sizing:border-box;">
+                                        <div style="font-size:13px;color:#775C56;font-weight:600;margin-bottom:6px;">删除这条消息？</div>
+                                        <div style="font-size:12px;color:#B89B95;margin-bottom:14px;">删除后无法恢复</div>
+                                        <div style="display:flex;gap:8px;">
+                                            <button id="del-cancel" style="flex:1;padding:10px;border:none;border-radius:12px;background:#D5EBE4;color:#775C56;font-size:14px;cursor:pointer;">取消</button>
+                                            <button id="del-confirm" style="flex:1;padding:10px;border:none;border-radius:12px;background:#FFD3D4;color:#775C56;font-size:14px;font-weight:600;cursor:pointer;">删除</button>
+                                        </div>
+                                    </div>`;
+                                    p.appendChild(delDlg);
+                                    delDlg.querySelector('#del-cancel').onclick = () => delDlg.remove();
+                                    delDlg.querySelector('#del-confirm').onclick = () => { deleteMsg(msgIdx); delDlg.remove(); };
+                                }},
                             ];
                             menu.innerHTML = items.map((it,i)=>`<div class="ctx-item${it.danger?' danger':''}" data-i="${i}">${it.label}</div>`).join('');
                             // Position relative to chat page: 横排菜单显示在气泡上方居中（像微信）
@@ -4749,6 +4765,9 @@ DB.init();
                                         }
                                     } catch(e) {}
                                     if (c.memory?.manual) systemPrompt += `【记忆】：${c.memory.manual}\n`;
+                                    // 【正数日/倒数日】复用"心跳同频"那边已经写好的汇总函数，把用户设置的
+                                    // 正数日/倒数日具体天数也塞进人设上下文，让 AI 能在对方聊到相关话题时自然接话
+                                    try { if (window.hsBuildDaysContext) systemPrompt += window.hsBuildDaysContext(c); } catch(e) {}
                                     
                                     if (!isOffline) {
                                         systemPrompt += "【格式小提示】：每条消息自然地用中文标点收尾就好，别用空格代替标点。不要用 *动作* 或 [动作] 这种格式，也别用 😏 这个表情。除此之外，怎么自在怎么说。\n";
