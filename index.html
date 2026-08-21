@@ -4955,7 +4955,10 @@ DB.init();
                                             const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
                                             if (lines.length >= 2) {
                                                 // 每行作为一条消息，但行内如果太长还是可以保留（真人一条消息也可能稍长）
-                                                return mergeOpenQuotes(lines);
+                                                // 【修复】之前这条路径直接 return，没做句尾清理——AI 如果习惯每条消息用
+                                                // "，"/"、" 收尾，会原样带着尾逗号显示出来。这里补上跟下面逗号兜底路径
+                                                // 一致的清理，去掉每条气泡末尾多余的逗号/顿号。
+                                                return mergeOpenQuotes(lines).map(function(b){ return b.replace(/[，、]+$/, ''); }).filter(Boolean);
                                             }
 
                                             const EPHOLD = 'ELLIPSIS_HOLD';
@@ -12709,7 +12712,15 @@ const ApiHandler = {
     parseChatResponse(platform, data) {
         let raw;
         if (platform === 'gemini') {
-            raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            // 【修复·误判空回复】之前只取 parts[0].text，但 Gemini（尤其开了思考的 2.5 系列）
+            // 有时会把内容拆成好几个 parts，或者把"思考过程"也作为一个 part 混在里面。
+            // 只读第一个 part 的话，要么漏掉后面几段正文，要么读到的其实是思考内容不是正文，
+            // 结果就是明明有回复却被判定成"空回复"。这里改成：拼接所有非思考(thought!==true)的
+            // 文本 part，漏检率会低很多；如果拼完还是空字符串，才说明是真的没内容（比如被安全过滤拦了）。
+            const parts = data.candidates?.[0]?.content?.parts;
+            if (Array.isArray(parts)) {
+                raw = parts.filter(p => p && typeof p.text === 'string' && !p.thought).map(p => p.text).join('');
+            }
         } else { // Handles 'openai' and 'MyAPI'
             raw = data.choices?.[0]?.message?.content;
         }
